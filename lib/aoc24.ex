@@ -112,33 +112,62 @@ defmodule Aoc24 do
   int? If there are > 1 errors then certainly removing one wont fix it. But if there is
   only one error then perhaps it's fixable. So we could just collect those one error
   problems and assess each in turn maybe.
+
+  A better way is if you meet a problem, expand the window. that way you can skip the one
+  in the middle. You still need to know how often to do that though I suppose, as you can
+  only do that once.
+
+  Count errors. Fix by getting a window of 3 and removing the middle always. Special case
+  the first and maybe the end of the list.
   """
   def day_2_2() do
-    "./day_2_1_input.txt"
+    # "./day_2_1_input.txt"
+    "./example.txt"
     |> File.read!()
     |> String.split(@new_line, trim: true)
-    |> Enum.reduce({problems, 0}, fn line, {problems, count} ->
-      [one, two | rest] = line |> String.split(" ")
-      one = String.to_integer(one)
-      two = String.to_integer(two)
-      diff = abs(one - two)
+    |> Enum.reduce(0, fn line, count ->
+      [one, two, three | rest] = line |> String.split(" ") |> Enum.map(&String.to_integer/1)
 
-      problems = if diff > 0 && diff < 4, do: 0, else: 1
-      sum_safe_reports([two | rest], one < two, {  count})
+      if is_safe?(one, two, one < two) do
+        sum_safe_reports([two, three | rest], one < two, 0, count)
+      else
+        if is_safe?(one, three, one < three) do
+          sum_safe_reports([three | rest], one < three, 1, count)
+        else
+          count
+        end
+      end
     end)
   end
 
-  defp sum_safe_reports([_final], _, count), do: count + 1
+  defp is_safe?(first, next, incrementing?) do
+    diff = if incrementing?, do: next - first, else: first - next
+    diff > 0 && diff < 4
+  end
 
-  defp sum_safe_reports([current, next | rest], incrementing?, count) do
-    next = String.to_integer(next)
+  defp sum_safe_reports([_final], _, _, count) do
+    count + 1
+  end
 
-    diff = if incrementing?, do: next - current, else: current - next
-
-    if diff > 0 && diff < 4 do
-      sum_safe_reports([next | rest], incrementing?, count)
+  defp sum_safe_reports([penultimate, final], incrementing?, errors, count) do
+    if is_safe?(penultimate, final, incrementing?) || errors < 1 do
+      count + 1
     else
       count
+    end
+  end
+
+  defp sum_safe_reports([one, two, three | rest], incrementing?, errors, count) do
+    if is_safe?(one, two, incrementing?) do
+      sum_safe_reports([two, three | rest], incrementing?, errors, count)
+    else
+      errors = errors + 1
+
+      if is_safe?(one, three, incrementing?) && errors < 2 do
+        sum_safe_reports([three | rest], incrementing?, errors, count)
+      else
+        count
+      end
     end
   end
 end
