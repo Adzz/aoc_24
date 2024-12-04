@@ -181,4 +181,63 @@ defmodule Aoc24 do
       end
     end
   end
+
+  @doc """
+  Basically parse out the MUL instructions and add them up.
+  """
+  def day_3_1() do
+    "./day_3_input.txt"
+    |> File.read!()
+    |> parse(1, [], 0)
+  end
+
+  def parse(<<>>, _, _, total), do: total
+
+  @mul_start "mul("
+  @comma ","
+  @mul_end ")"
+  # If we see a mul start but the stack is not empty then it can't be valid.
+  def parse(<<@mul_start, rest::binary>>, current_index, [], total) do
+    new_current_index = current_index + 3
+    end_index = parse_number(rest, new_current_index)
+
+    if end_index == new_current_index do
+      parse(rest, end_index, [], total)
+    else
+      <<number::binary-size(end_index - new_current_index), rest::binary>> = rest
+      first_int = String.to_integer(number)
+      parse(rest, end_index, [first_int], total)
+    end
+  end
+
+  def parse(<<@comma, rest::binary>>, current_index, [first_int], total) do
+    new_current_index = current_index + 1
+    end_index = parse_number(rest, new_current_index)
+
+    if end_index == new_current_index do
+      parse(rest, current_index, [], total)
+    else
+      <<number::binary-size(end_index - new_current_index), rest::binary>> = rest
+      second_int = String.to_integer(number)
+      parse(rest, end_index, [second_int, first_int], total)
+    end
+  end
+
+  def parse(<<@mul_end, rest::binary>>, current_index, [first, second], total) do
+    parse(rest, current_index + 1, [], first * second + total)
+  end
+
+  # We reset the stack if we had started a mult that never happened.
+  def parse(<<_::binary-size(1), rest::binary>>, index, _stack, total) do
+    parse(rest, index + 1, [], total)
+  end
+
+  @all_digits ~c"0123456789"
+  for digit <- @all_digits do
+    def parse_number(<<unquote(digit), rest::bits>>, end_index) do
+      parse_number(rest, end_index + 1)
+    end
+  end
+
+  def parse_number(_rest, end_index), do: end_index
 end
