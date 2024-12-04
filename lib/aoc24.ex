@@ -54,26 +54,6 @@ defmodule Aoc24 do
 
     - First number == 75
     - Next number can ONLY be one of [76, 77, 78, 74, 73, 72]
-
-  Once you know the second number you now also know the Direction, which limits the possibilities
-  even further from there. EG say it's 76, well then the next can only be:
-
-    77, 78, 79
-
-  A valid line describes a path through all possible values. I guess it's of infinite depth
-  though in theory.
-
-  %{
-    75 => %{
-      76 => %{ 77 => %{}, 78 => %{}, 79 => %{}},
-      77 => %{ 78 => %{}, 79 => %{}, 80 => %{}},
-      78 => %{ },
-      74 => %{ },
-      73 => %{ },
-      72 => %{ },
-    }
-  }
-  321 is the answer.
   """
   def day_2_1() do
     "./day_2_1_input.txt"
@@ -119,25 +99,57 @@ defmodule Aoc24 do
 
   Count errors. Fix by getting a window of 3 and removing the middle always. Special case
   the first and maybe the end of the list.
+
+  Problematic inputs:
+
+      62 61 62 63 65 67 68 71
+      91 89 88 87 82 80 78 73
+      41 42 40 37 37 35 33 26
+      43 44 51 53 59
+      64 61 54 51 50 47 45 38
+      77 78 77 74 74 72 65
+      86 84 81 84 79
+      85 85 82 80 79 78 76
+      66 66 65 62 62 60 56
   """
   def day_2_2() do
-    # "./day_2_1_input.txt"
-    "./example.txt"
+    "./day_2_1_input.txt"
+    # "./example.txt"
     |> File.read!()
     |> String.split(@new_line, trim: true)
     |> Enum.reduce(0, fn line, count ->
-      [one, two, three | rest] = line |> String.split(" ") |> Enum.map(&String.to_integer/1)
+      [one, two, three | rest] =
+        line |> String.split(" ") |> Enum.map(&String.to_integer/1)
 
-      if is_safe?(one, two, one < two) do
-        sum_safe_reports([two, three | rest], one < two, 0, count)
-      else
-        if is_safe?(one, three, one < three) do
-          sum_safe_reports([three | rest], one < three, 1, count)
-        else
-          count
-        end
-      end
+      # The special case here is that you have to start one of three ways. You can begin
+      # with any of them successfully but if you ever see > 1 error halt immediately and
+      # try one of the other possible starts. This list enumerates each possible start
+      possible_starting_combos = [
+        {one, two, [two, three | rest], 0},
+        # These two start with 1 error because in both cases we have already dropped a number.
+        {one, three, [three | rest], 1},
+        {two, three, [three | rest], 1}
+      ]
+
+      start_with_pair(possible_starting_combos, count)
     end)
+  end
+
+  defp start_with_pair([], count), do: count
+
+  defp start_with_pair([{left, right, rest, errors} | next_iteration], count) do
+    new_count =
+      if is_safe?(left, right, left < right) do
+        sum_safe_reports(rest, left < right, errors, count)
+      else
+        count
+      end
+
+    if count == new_count do
+      start_with_pair(next_iteration, count)
+    else
+      new_count
+    end
   end
 
   defp is_safe?(first, next, incrementing?) do
@@ -145,12 +157,11 @@ defmodule Aoc24 do
     diff > 0 && diff < 4
   end
 
-  defp sum_safe_reports([_final], _, _, count) do
-    count + 1
-  end
+  defp sum_safe_reports([_final], _, _, count), do: count + 1
 
   defp sum_safe_reports([penultimate, final], incrementing?, errors, count) do
-    if is_safe?(penultimate, final, incrementing?) || errors < 1 do
+    # If we have 0 errors then we can always fix when there are 2 numbers left.
+    if errors < 1 || is_safe?(penultimate, final, incrementing?) do
       count + 1
     else
       count
