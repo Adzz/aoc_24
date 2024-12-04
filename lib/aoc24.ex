@@ -184,6 +184,8 @@ defmodule Aoc24 do
 
   @doc """
   Basically parse out the MUL instructions and add them up.
+
+  178794710 was our answer.
   """
   def day_3_1() do
     "./day_3_input.txt"
@@ -240,4 +242,66 @@ defmodule Aoc24 do
   end
 
   def parse_number(_rest, end_index), do: end_index
+
+  @doc """
+  Adds more instructions basically, we bracket the dos / donts.
+
+  Answer was 76729637.
+  """
+  def day_3_2() do
+    "./day_3_input.txt"
+    |> File.read!()
+    |> parse_instructions(1, [], 0)
+  end
+
+  def parse_instructions(<<>>, _, _, total), do: total
+
+  @doo "do()"
+  @dont "don't()"
+  def parse_instructions(<<@dont, rest::binary>>, current_index, _, total) do
+    parse_instructions(rest, current_index + 6, [:dont], total)
+  end
+
+  def parse_instructions(<<@doo, rest::binary>>, current_index, [:dont], total) do
+    parse_instructions(rest, current_index + 3, [], total)
+  end
+
+  # Now if the stack has :dont in it we skip.
+  def parse_instructions(<<_::binary-size(1), rest::binary>>, current_index, [:dont], total) do
+    parse_instructions(rest, current_index + 1, [:dont], total)
+  end
+
+  def parse_instructions(<<@mul_start, rest::binary>>, current_index, [], total) do
+    new_current_index = current_index + 3
+    end_index = parse_number(rest, new_current_index)
+
+    if end_index == new_current_index do
+      parse_instructions(rest, end_index, [], total)
+    else
+      <<number::binary-size(end_index - new_current_index), rest::binary>> = rest
+      first_int = String.to_integer(number)
+      parse_instructions(rest, end_index, [first_int], total)
+    end
+  end
+
+  def parse_instructions(<<@comma, rest::binary>>, current_index, [first_int], total) do
+    new_current_index = current_index + 1
+    end_index = parse_number(rest, new_current_index)
+
+    if end_index == new_current_index do
+      parse_instructions(rest, current_index, [], total)
+    else
+      <<number::binary-size(end_index - new_current_index), rest::binary>> = rest
+      second_int = String.to_integer(number)
+      parse_instructions(rest, end_index, [second_int, first_int], total)
+    end
+  end
+
+  def parse_instructions(<<@mul_end, rest::binary>>, current_index, [first, second], total) do
+    parse_instructions(rest, current_index + 1, [], first * second + total)
+  end
+
+  def parse_instructions(<<_::binary-size(1), rest::binary>>, index, _stack, total) do
+    parse_instructions(rest, index + 1, [], total)
+  end
 end
