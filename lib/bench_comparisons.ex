@@ -1,5 +1,65 @@
 # Lifted from others in order to compare
 # https://elixirforum.com/t/advent-of-code-2024-day-4/67869/32
+
+defmodule T do
+    def p1(input) do
+    field = parse_field(input)
+
+    find_letters(?X, field)
+    |> surrounded_by(?M, field)
+    |> followed_by(?A, field)
+    |> followed_by(?S, field)
+    |> Enum.count()
+  end
+
+  defp parse_field(input) do
+    width = :binary.match(input, "\n") |> elem(0)
+    chars = :binary.replace(input, "\n", "", [:global])
+    height = div(byte_size(chars), width)
+
+    {width, height, chars}
+  end
+
+  defp find_letters(letter, {width, height, chars}) do
+    chars
+    |> :binary.matches(<<letter>>)
+    |> Stream.map(fn {index, _} -> {rem(index, width), div(index, height)} end)
+  end
+
+  defp surrounded_by(matches, letter, {width, height, chars}) do
+    x_range = 0..(width - 1)
+    y_range = 0..(height - 1)
+
+    Stream.flat_map(matches, fn {x, y} ->
+      for dx <- -1..1,
+          x2 = x + dx,
+          x2 in x_range,
+          dy <- -1..1,
+          y2 = y + dy,
+          y2 in y_range,
+          :binary.at(chars, x2 + width * y2) == letter,
+          do: {x2, y2, dx, dy}
+    end)
+  end
+
+  defp followed_by(matches, letter, {width, height, chars}) do
+    x_range = 0..(width - 1)
+    y_range = 0..(height - 1)
+
+    Stream.flat_map(matches, fn {x, y, dx, dy} ->
+      x2 = x + dx
+      y2 = y + dy
+
+      if x2 in x_range and y2 in y_range and :binary.at(chars, x2 + width * y2) == letter do
+        [{x2, y2, dx, dy}]
+      else
+        []
+      end
+    end)
+  end
+end
+
+
 defmodule Advent.Grid do
   def new(input) do
     input
