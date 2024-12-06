@@ -369,21 +369,21 @@ defmodule Aoc24 do
   defp line_length(<<@new_line, _::binary>>, count), do: count + 1
   defp line_length(<<_::binary-size(1), rest::binary>>, count), do: line_length(rest, count + 1)
 
-  def column_count(grid, line_length) do
+  defp column_count(grid, line_length) do
     Enum.reduce(0..(line_length - 1), "", fn x, lines ->
       columns({x, line_length - 2}, grid, line_length, lines)
     end)
     |> check_line(0)
   end
 
-  def columns({_, y}, _, _, acc) when y < 0, do: <<acc::binary, @new_line>>
+  defp columns({_, y}, _, _, acc) when y < 0, do: <<acc::binary, @new_line>>
 
-  def columns({x, y}, grid, line_length, acc) do
+  defp columns({x, y}, grid, line_length, acc) do
     char = :binary.part(grid, x + y * line_length, 1)
     columns({x, y - 1}, grid, line_length, <<acc::binary, char::binary>>)
   end
 
-  def south_east_diagonal(grid, line_length) do
+  defp south_east_diagonal(grid, line_length) do
     se_diagonal_index({line_length - 2, 0}, line_length - 2, [])
     |> Enum.reduce("", fn diagonal_indexes, acc ->
       line =
@@ -399,20 +399,20 @@ defmodule Aoc24 do
   end
 
   # We've gone past bottom left.
-  def se_diagonal_index({0, y}, last_idx, acc) when y == last_idx, do: acc
+  defp se_diagonal_index({0, y}, last_idx, acc) when y == last_idx, do: acc
 
   # This is the first case hit - the top right
-  def se_diagonal_index({last_idx, 0}, last_idx, acc) do
+  defp se_diagonal_index({last_idx, 0}, last_idx, acc) do
     se_diagonal_index({last_idx - 1, 0}, last_idx, [[{last_idx, 0}] | acc])
   end
 
   # This is the switch up case, where we round the corner on the top left hand side going down
-  def se_diagonal_index({x, _}, last_idx, acc) when x < 0 do
+  defp se_diagonal_index({x, _}, last_idx, acc) when x < 0 do
     se_diagonal_index({0, 1}, last_idx, acc)
   end
 
   # this is going along the top row, we heading backwards on the x axis
-  def se_diagonal_index({x, 0} = current_cell, last_idx, acc) do
+  defp se_diagonal_index({x, 0} = current_cell, last_idx, acc) do
     diagonal = [
       current_cell | Enum.map(1..(last_idx - x), fn y_coord -> {x + 1 * y_coord, y_coord} end)
     ]
@@ -421,7 +421,7 @@ defmodule Aoc24 do
   end
 
   # this is going down the leftmost column.
-  def se_diagonal_index({0, y} = current, last_idx, acc) do
+  defp se_diagonal_index({0, y} = current, last_idx, acc) do
     diagonal = [current | Enum.map(1..(last_idx - y), fn y_coord -> {y_coord, y + y_coord} end)]
     se_diagonal_index({0, y + 1}, last_idx, [diagonal | acc])
   end
@@ -443,26 +443,144 @@ defmodule Aoc24 do
     |> check_line(0)
   end
 
-  def ne_diagonal_idx({last_idx, y}, last_idx, acc) when y >= last_idx, do: acc
+  defp ne_diagonal_idx({last_idx, y}, last_idx, acc) when y >= last_idx, do: acc
 
-  def ne_diagonal_idx({0, 0}, last_idx, acc) do
+  defp ne_diagonal_idx({0, 0}, last_idx, acc) do
     ne_diagonal_idx({1, 0}, last_idx, [[{0, 0}] | acc])
   end
 
-  def ne_diagonal_idx({x, 0}, last_idx, acc) when x > last_idx do
+  defp ne_diagonal_idx({x, 0}, last_idx, acc) when x > last_idx do
     ne_diagonal_idx({x - 1, 1}, last_idx, acc)
   end
 
-  def ne_diagonal_idx({x, 0} = current_cell, last_idx, acc) do
+  defp ne_diagonal_idx({x, 0} = current_cell, last_idx, acc) do
     diagonal = [current_cell | Enum.map(1..x, fn y_coord -> {x - 1 * y_coord, y_coord} end)]
     ne_diagonal_idx({x + 1, 0}, last_idx, [diagonal | acc])
   end
 
-  def ne_diagonal_idx({x, y} = current, last_idx, acc) do
+  defp ne_diagonal_idx({x, y} = current, last_idx, acc) do
     diagonal = [
       current | Enum.map(1..(last_idx - y), fn y_coord -> {x - 1 * y_coord, y + y_coord} end)
     ]
 
     ne_diagonal_idx({x, y + 1}, last_idx, [diagonal | acc])
+  end
+
+  @doc """
+  This one is about finding a diagonal MASs. Essentially we need to iterate over each letter
+  and check if there is an A diagonally down from it. We can stop 3 from the end as the
+  check on that letter is the same as the check on the last letter, and the check on the
+  penultimate letter in a row would extend outside of the row, so can never work.
+
+  If we find an A we can keep checking down and right again for the correct letter (which
+  depends on the first letter seen), and then check + 2 down and to the left twice. Not
+  actually too mental but we should keep checking on the binary too as it's fast.
+
+    .M.S......
+    ..A..MSMS.
+    .M.S.MAA..
+    ..A.ASMSM.
+    .M.S.M....
+    ..........
+    S.S.S.S.S.
+    .A.A.A.A..
+    M.M.M.M.M.
+    ..........
+
+  Example grid should be 9.
+  """
+  def day4_2() do
+    grid = "./day_4_input.txt" |> File.read!()
+    line_length = line_length(grid, 0)
+    find_x(grid, {0, 0}, line_length, 0)
+  end
+
+  @m "M"
+  @a "A"
+  @s "S"
+
+  def find_x(binary, {x, y}, line_length, count) do
+    if mas_se?(binary, line_length) || sam_se?(binary, line_length) do
+      <<_::binary-size(2), rest::binary>> = binary
+
+      count =
+        if mas_sw?(rest, line_length) || sam_sw?(rest, line_length) do
+          count + 1
+        else
+          count
+        end
+
+      next(binary, {x, y}, line_length, count)
+    else
+      next(binary, {x, y}, line_length, count)
+    end
+  end
+
+  # This bounds check essentially.
+  def next(binary, {x, y}, line_length, count) do
+    if x + 1 > line_length - 4 do
+      if y + 1 > line_length - 4 do
+        # We stop because we are at max Y depth
+        count
+      else
+        # Skip to next row
+        <<_::binary-size((line_length - x)), rest::binary>> = binary
+        find_x(rest, {0, y + 1}, line_length, count)
+      end
+    else
+      # Move right
+      <<_::binary-size(1), rest::binary>> = binary
+      find_x(rest, {x + 1, y}, line_length, count)
+    end
+  end
+
+  def mas_se?(<<@m, rest::binary>>, line_length) do
+    case southeast_once(rest, line_length) do
+      <<@a, after_a::binary>> -> match?(<<@s, _::binary>>, southeast_once(after_a, line_length))
+      _ -> false
+    end
+  end
+
+  def mas_se?(_, _), do: false
+
+  def sam_se?(<<@s, rest::binary>>, line_length) do
+    case southeast_once(rest, line_length) do
+      <<@a, after_a::binary>> -> match?(<<@m, _::binary>>, southeast_once(after_a, line_length))
+      _ -> false
+    end
+  end
+
+  def sam_se?(_, _), do: false
+
+  def mas_sw?(<<@m, rest::binary>>, line_length) do
+    case southwest_once(rest, line_length) do
+      <<@a, after_a::binary>> -> match?(<<@s, _::binary>>, southwest_once(after_a, line_length))
+      _ -> false
+    end
+  end
+
+  def mas_sw?(_, _), do: false
+
+  def sam_sw?(<<@s, rest::binary>>, line_length) do
+    case southwest_once(rest, line_length) do
+      <<@a, after_a::binary>> -> match?(<<@m, _::binary>>, southwest_once(after_a, line_length))
+      _ -> false
+    end
+  end
+
+  def sam_sw?(_, _), do: false
+
+  def southwest_once(binary, line_length) do
+    skip = line_length - 2
+    <<_::binary-size(skip), rest::binary>> = binary
+    rest
+  end
+
+  # May need bounds checks? so we don't wrap the line? Or handle higher up. But there is
+  # a max X coord of line_length - 4, one for new line, one for last char and one for pen char and one to 0 index.
+  def southeast_once(binary, line_length) do
+    skip = line_length
+    <<_::binary-size(skip), rest::binary>> = binary
+    rest
   end
 end

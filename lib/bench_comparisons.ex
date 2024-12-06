@@ -2,7 +2,7 @@
 # https://elixirforum.com/t/advent-of-code-2024-day-4/67869/32
 
 defmodule T do
-    def p1(input) do
+  def p1(input) do
     field = parse_field(input)
 
     find_letters(?X, field)
@@ -58,7 +58,6 @@ defmodule T do
     end)
   end
 end
-
 
 defmodule Advent.Grid do
   def new(input) do
@@ -149,19 +148,21 @@ defmodule Y2024.Day04 do
   # use Advent.Day, no: 04
 
   def part1() do
-    grid = "./day_4_input.txt" |> File.read!() |>parse_input
+    grid = "./day_4_input.txt" |> File.read!() |> parse_input
+
     grid
     |> find_coords("X")
     |> Enum.flat_map(&find_xmas_words(grid, &1))
     |> length()
   end
 
-  # def part2(input) do
-  #   input
-  #   |> find_coords("A")
-  #   |> Enum.flat_map(&find_x_mas_words(input, &1))
-  #   |> length()
-  # end
+  def part2() do
+    grid = "./day_4_input.txt" |> File.read!() |> parse_input
+    grid
+    |> find_coords("A")
+    |> Enum.flat_map(&find_x_mas_words(grid, &1))
+    |> length()
+  end
 
   defp find_coords(grid, letter) do
     grid
@@ -179,15 +180,15 @@ defmodule Y2024.Day04 do
     end)
   end
 
-  # defp find_x_mas_words(grid, start) do
-  #   [[[{1, -1}, {1, 1}], [{-1, 1}, {-1, -1}]], [[{-1, -1}, {1, -1}], [{-1, 1}, {1, 1}]]]
-  #   |> Enum.filter(fn [side1, side2] ->
-  #     (Enum.all?(side1, &matches?(start, &1, 1, "M", grid)) &&
-  #        Enum.all?(side2, &matches?(start, &1, 1, "S", grid))) ||
-  #       (Enum.all?(side1, &matches?(start, &1, 1, "S", grid)) &&
-  #          Enum.all?(side2, &matches?(start, &1, 1, "M", grid)))
-  #   end)
-  # end
+  defp find_x_mas_words(grid, start) do
+    [[[{1, -1}, {1, 1}], [{-1, 1}, {-1, -1}]], [[{-1, -1}, {1, -1}], [{-1, 1}, {1, 1}]]]
+    |> Enum.filter(fn [side1, side2] ->
+      (Enum.all?(side1, &matches?(start, &1, 1, "M", grid)) &&
+         Enum.all?(side2, &matches?(start, &1, 1, "S", grid))) ||
+        (Enum.all?(side1, &matches?(start, &1, 1, "S", grid)) &&
+           Enum.all?(side2, &matches?(start, &1, 1, "M", grid)))
+    end)
+  end
 
   def matches?({row1, col1}, {row2, col2}, offset, letter, grid) do
     Map.get(grid, {row1 + offset * row2, col1 + offset * col2}) == letter
