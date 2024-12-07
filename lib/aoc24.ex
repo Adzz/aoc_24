@@ -634,11 +634,11 @@ defmodule Aoc24 do
   the rules and if so whether sorting the inputs and checking that it's equal to the pre-sorted
   list is valid?
 
-  One idea is work out how many unqiueue numbers there are in the rules (simple guess is rules * 2)
+  One idea is work out how many unique numbers there are in the rules (simple guess is rules * 2)
   then like create a tuple of that many elements. Then swap shit around in that tuple, essentially
   implementing a sort of kinds.
 
-  "happened before" is sounding very CRDT tho. Maybe the rules form some sort of heirarchy because
+  "happened before" is sounding very CRDT tho. Maybe the rules form some sort of hierarchy because
   previous rules influence latter ones. EG 2 before 3 and 1 before 2, must mean 1 before 3?
   Like the first line, 75 is before 47 and 61 and 53.
 
@@ -655,12 +655,12 @@ defmodule Aoc24 do
     input = File.read!("./day_5_input.txt")
     {rules, reports} = rules_reports(input, [])
 
+    rules = numbers_in_rules(rules)
+
     Enum.reduce(reports, 0, fn report, mid_number_sum ->
       report_good? =
         Enum.all?(report, fn number ->
-          must_come_before = comes_before(number, rules)
-          must_come_after = comes_after(number, rules)
-
+          {must_come_before, must_come_after} = Map.fetch!(rules, number)
           {comes_after, comes_before} = numbers_before(number, report)
 
           (comes_after == [] || not Enum.any?(comes_after, &(&1 in must_come_before))) &&
@@ -668,7 +668,7 @@ defmodule Aoc24 do
         end)
 
       if report_good? do
-        mid = Enum.at(report, div(length(report),2))
+        mid = Enum.at(report, div(length(report), 2))
         mid_number_sum + mid
       else
         mid_number_sum
@@ -678,6 +678,14 @@ defmodule Aoc24 do
 
   defp comes_before(number, rules), do: for({^number, rule} <- rules, do: rule)
   defp comes_after(number, rules), do: for({rule, ^number} <- rules, do: rule)
+
+  defp numbers_in_rules(rules) do
+    Enum.reduce(rules, %{}, fn {left, right}, acc ->
+      acc
+      |> Map.put_new_lazy(left, fn -> {comes_before(left, rules), comes_after(left, rules)} end)
+      |> Map.put_new_lazy(right, fn -> {comes_before(right, rules), comes_after(right, rules)} end)
+    end)
+  end
 
   # May want to raise if we see dupes here.
   defp numbers_before(number, numbers) do
@@ -720,5 +728,78 @@ defmodule Aoc24 do
 
   def parse_reports(<<numb::binary-size(2), rest::binary>>, report, reports) do
     parse_reports(rest, [String.to_integer(numb) | report], reports)
+  end
+
+  defp test_input_5() do
+    """
+    47|53
+    97|13
+    97|61
+    97|47
+    75|29
+    61|13
+    75|53
+    29|13
+    97|29
+    53|29
+    61|53
+    97|53
+    61|29
+    47|13
+    75|47
+    97|75
+    47|61
+    75|61
+    47|29
+    75|13
+    53|13
+
+    75,47,61,53,29
+    97,61,53,29,13
+    75,29,13
+    75,97,47,61,53
+    61,13,29
+    97,13,75,29,47
+    """
+  end
+
+  @doc """
+  Basically fix the ones from part 1 that were ber-oken.
+  """
+  def day_5_2() do
+    input = File.read!("./day_5_input.txt")
+    # input  = test_input_5()
+    {rules, reports} = rules_reports(input, [])
+
+    rules = numbers_in_rules(rules)
+
+    Enum.reduce(reports, 0, fn report, mid_number_sum ->
+      report_good? =
+        Enum.all?(report, fn number ->
+          {must_come_before, must_come_after} = Map.fetch!(rules, number)
+          {comes_after, comes_before} = numbers_before(number, report)
+
+          (comes_after == [] || not Enum.any?(comes_after, &(&1 in must_come_before))) &&
+            (comes_before == [] || not Enum.all?(comes_before, &(&1 in must_come_after)))
+        end)
+
+      if report_good? do
+        mid_number_sum
+      else
+        # Kinda nasty to do this after? As could do it in the moment. but yea
+        mid = Enum.at(fix_report(report, rules), div(length(report), 2))
+        mid_number_sum + mid
+      end
+    end)
+  end
+
+  def is_less_than?(number, another, rules) do
+    {_must_come_before, must_come_after} = Map.fetch!(rules, number)
+    another in must_come_after
+  end
+
+  # always an odd number of items in report as there is always a mid point.
+  defp fix_report(report, rules) do
+    Enum.sort_by(report, & &1, fn left, right -> !is_less_than?(left, right, rules) end)
   end
 end
