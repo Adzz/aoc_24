@@ -730,38 +730,38 @@ defmodule Aoc24 do
     parse_reports(rest, [String.to_integer(numb) | report], reports)
   end
 
-  defp test_input_5() do
-    """
-    47|53
-    97|13
-    97|61
-    97|47
-    75|29
-    61|13
-    75|53
-    29|13
-    97|29
-    53|29
-    61|53
-    97|53
-    61|29
-    47|13
-    75|47
-    97|75
-    47|61
-    75|61
-    47|29
-    75|13
-    53|13
+  # defp test_input_5() do
+  #   """
+  #   47|53
+  #   97|13
+  #   97|61
+  #   97|47
+  #   75|29
+  #   61|13
+  #   75|53
+  #   29|13
+  #   97|29
+  #   53|29
+  #   61|53
+  #   97|53
+  #   61|29
+  #   47|13
+  #   75|47
+  #   97|75
+  #   47|61
+  #   75|61
+  #   47|29
+  #   75|13
+  #   53|13
 
-    75,47,61,53,29
-    97,61,53,29,13
-    75,29,13
-    75,97,47,61,53
-    61,13,29
-    97,13,75,29,47
-    """
-  end
+  #   75,47,61,53,29
+  #   97,61,53,29,13
+  #   75,29,13
+  #   75,97,47,61,53
+  #   61,13,29
+  #   97,13,75,29,47
+  #   """
+  # end
 
   @doc """
   Basically fix the ones from part 1 that were ber-oken.
@@ -801,4 +801,91 @@ defmodule Aoc24 do
   defp fix_report(report, rules) do
     Enum.sort_by(report, & &1, fn left, right -> !is_less_than?(left, right, rules) end)
   end
+
+  @doc """
+  like route finding. Find all unique steps though. Feels like indexing into a binary might
+  be fastest. But to do that will need primitives like:
+
+    - Find up until object (or exit)
+    - Find down until object (or exit)
+    - Find left until object (or exit)
+    - Find right until object (or exit)
+
+  All these just become keeping pointers into the original binary and adding / subtracting
+  from them as needed.
+
+  First, find index of carret. That's easy.
+  Next keep track of direction in some way.
+    NB may have to turn multiple times.
+
+  Keep track of visited paths? knowing how to deduplicate is key. Maybe just uniquely index
+  them with x/y and then Enum.uniq the elements at the end.
+  """
+  def day_6_1() do
+    grid = """
+    ....#.....
+    .........#
+    ..........
+    ..#.......
+    .......#..
+    ....012345
+    .#..^.....
+    ........#.
+    #.........
+    ......#...
+    """
+
+    # grid = File.read!("./day_6_input.txt")
+    max_width = map_width(grid, 0)
+    {x, y} = find_start(grid, {0, 0})
+    move(grid, :up, {x, y}, max_width, [])
+  end
+
+  require Logger
+
+  def map_width(<<@new_line, _::binary>>, count), do: count + 1
+  def map_width(<<_::binary-size(1), rest::binary>>, count), do: map_width(rest, count + 1)
+
+  @block "#"
+  def move(grid, direction, coords, max_width, visited) do
+    new_coords = coord_for_direction(direction, coords)
+
+    case move(grid, new_coords, max_width) do
+      :exited_map ->
+        length(Enum.uniq(visited))
+
+      <<@block, _::binary>> ->
+        Logger.warning("Block seen at #{inspect(new_coords)}")
+        move(grid, turn_right(direction), coords, max_width, visited)
+
+      # <<@new_line, _::binary>> -> raise "exited"
+      _ ->
+        move(grid, direction, new_coords, max_width, [new_coords | visited])
+    end
+  end
+
+  defp coord_for_direction(:up, {x, y}), do: {x, y - 1}
+  defp coord_for_direction(:down, {x, y}), do: {x, y + 1}
+  defp coord_for_direction(:left, {x, y}), do: {x - 1, y}
+  defp coord_for_direction(:right, {x, y}), do: {x + 1, y}
+
+  defp move(grid, {x, y}, max) do
+    # The grid is square, but for the newlines so y is max - 1
+    if x < 0 || y < 0 || x > max - 2 || y > max - 2 do
+      :exited_map
+    else
+      <<_::binary-size(x + max * y), rest::binary>> = grid
+      rest
+    end
+  end
+
+  defp turn_right(:up), do: :right
+  defp turn_right(:down), do: :left
+  defp turn_right(:left), do: :up
+  defp turn_right(:right), do: :down
+
+  @caret "^"
+  def find_start(<<@caret, _::binary>>, {x, y}), do: {x, y}
+  def find_start(<<@new_line, rest::binary>>, {_, y}), do: find_start(rest, {0, y + 1})
+  def find_start(<<_::binary-size(1), rest::binary>>, {x, y}), do: find_start(rest, {x + 1, y})
 end
