@@ -158,6 +158,7 @@ defmodule Y2024.Day04 do
 
   def part2() do
     grid = "./day_4_input.txt" |> File.read!() |> parse_input
+
     grid
     |> find_coords("A")
     |> Enum.flat_map(&find_x_mas_words(grid, &1))

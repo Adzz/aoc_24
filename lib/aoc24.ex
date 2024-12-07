@@ -488,6 +488,7 @@ defmodule Aoc24 do
     ..........
 
   Example grid should be 9.
+  Answer was 1930.
   """
   def day4_2() do
     grid = "./day_4_input.txt" |> File.read!()
@@ -524,7 +525,7 @@ defmodule Aoc24 do
         count
       else
         # Skip to next row
-        <<_::binary-size((line_length - x)), rest::binary>> = binary
+        <<_::binary-size(line_length - x), rest::binary>> = binary
         find_x(rest, {0, y + 1}, line_length, count)
       end
     else
@@ -582,5 +583,142 @@ defmodule Aoc24 do
     skip = line_length
     <<_::binary-size(skip), rest::binary>> = binary
     rest
+  end
+
+  @doc """
+  We have ordering rules, and things to print or something:
+
+      47|53
+      97|13
+      97|61
+      97|47
+      75|29
+      61|13
+      75|53
+      29|13
+      97|29
+      53|29
+      61|53
+      97|53
+      61|29
+      47|13
+      75|47
+      97|75
+      47|61
+      75|61
+      47|29
+      75|13
+      53|13
+
+      75,47,61,53,29
+      97,61,53,29,13
+      75,29,13
+      75,97,47,61,53
+      61,13,29
+      97,13,75,29,47
+
+
+  Left of | must come before right. We must ID all updates which obey those rules. Some rules
+  are for numbers not mentioned in the update, those rules get ignored of course.
+
+  We have to find all updates that obey the rules, find the middle number and sum them.
+
+  Think rough approach is to make a map of the sort order, eg:
+  %{
+   "47" => 0,
+   "53 => 1,
+   ...
+  }
+
+  and then use that when sorting the inputs. Not sure if there are multiple ways to satisfy
+  the rules and if so whether sorting the inputs and checking that it's equal to the pre-sorted
+  list is valid?
+
+  One idea is work out how many unqiueue numbers there are in the rules (simple guess is rules * 2)
+  then like create a tuple of that many elements. Then swap shit around in that tuple, essentially
+  implementing a sort of kinds.
+
+  "happened before" is sounding very CRDT tho. Maybe the rules form some sort of heirarchy because
+  previous rules influence latter ones. EG 2 before 3 and 1 before 2, must mean 1 before 3?
+  Like the first line, 75 is before 47 and 61 and 53.
+
+  I guess you could go along the line and say "find me all relevant rules for this one", eg
+  75, comes_before: [29,53,47,61,13], comes_after: [97]
+
+  Now when we traverse the line we just go, find all numbers after 75, are any of
+  them in the "before" list. Then the same for after. Obvs some have none before some have none
+  after.
+
+  Answer was 4281 in the end
+  """
+  def day_5_1() do
+    input = File.read!("./day_5_input.txt")
+    {rules, reports} = rules_reports(input, [])
+
+    Enum.reduce(reports, 0, fn report, mid_number_sum ->
+      report_good? =
+        Enum.all?(report, fn number ->
+          must_come_before = comes_before(number, rules)
+          must_come_after = comes_after(number, rules)
+
+          {comes_after, comes_before} = numbers_before(number, report)
+
+          (comes_after == [] || not Enum.any?(comes_after, &(&1 in must_come_before))) &&
+            (comes_before == [] || not Enum.all?(comes_before, &(&1 in must_come_after)))
+        end)
+
+      if report_good? do
+        mid = Enum.at(report, div(length(report),2))
+        mid_number_sum + mid
+      else
+        mid_number_sum
+      end
+    end)
+  end
+
+  defp comes_before(number, rules), do: for({^number, rule} <- rules, do: rule)
+  defp comes_after(number, rules), do: for({rule, ^number} <- rules, do: rule)
+
+  # May want to raise if we see dupes here.
+  defp numbers_before(number, numbers) do
+    {_, before, afterr} =
+      Enum.reduce(numbers, {false, [], []}, fn n, {spotted?, before, afterr} ->
+        if spotted? do
+          {spotted?, before, [n | afterr]}
+        else
+          if n == number do
+            {true, before, afterr}
+          else
+            {false, [n | before], afterr}
+          end
+        end
+      end)
+
+    {before, afterr}
+  end
+
+  @pipe "|"
+  def rules_reports(<<@new_line, @new_line, rest::binary>>, rules) do
+    {Enum.reverse(rules), parse_reports(rest, [], [])}
+  end
+
+  def rules_reports(<<@new_line, rest::binary>>, acc), do: rules_reports(rest, acc)
+
+  def rules_reports(<<left::binary-size(2), @pipe, right::binary-size(2), rest::binary>>, rules) do
+    rules_reports(rest, [{String.to_integer(left), String.to_integer(right)} | rules])
+  end
+
+  def parse_reports(<<>>, _report, reports), do: Enum.reverse(reports)
+
+  def parse_reports(<<@new_line, rest::binary>>, report, reports) do
+    parse_reports(rest, [], [Enum.reverse(report) | reports])
+  end
+
+  def parse_reports(<<@comma, rest::binary>>, report, reports) do
+    parse_reports(rest, report, reports)
+  end
+
+  def parse_reports(<<numb::binary-size(2), rest::binary>>, report, reports) do
+    parse_reports(rest, [String.to_integer(numb) | report], reports)
   end
 end
