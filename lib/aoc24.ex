@@ -768,7 +768,6 @@ defmodule Aoc24 do
   """
   def day_5_2() do
     input = File.read!("./day_5_input.txt")
-    # input  = test_input_5()
     {rules, reports} = rules_reports(input, [])
 
     rules = numbers_in_rules(rules)
