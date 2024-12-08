@@ -803,6 +803,21 @@ defmodule Aoc24 do
   end
 
   @doc """
+  Example grid
+
+    # grid = "
+    # ....#.....
+    # .........#
+    # ..........
+    # ..#.......
+    # .......#..
+    # ....012345
+    # .#..^.....
+    # ........#.
+    # #.........
+    # ......#...
+    # "
+
   like route finding. Find all unique steps though. Feels like indexing into a binary might
   be fastest. But to do that will need primitives like:
 
@@ -814,53 +829,84 @@ defmodule Aoc24 do
   All these just become keeping pointers into the original binary and adding / subtracting
   from them as needed.
 
-  First, find index of carret. That's easy.
+  First, find index of caret. That's easy.
   Next keep track of direction in some way.
     NB may have to turn multiple times.
 
   Keep track of visited paths? knowing how to deduplicate is key. Maybe just uniquely index
   them with x/y and then Enum.uniq the elements at the end.
+
+  4939 was the answer
+
+  Comapred using map for visited nodes:
+
+    Name                   ips        average  deviation         median         99th %
+    Day 6 1 LIST        727.09        1.38 ms     ±7.15%        1.35 ms        1.68 ms
+    Day 6 1 MAP         663.04        1.51 ms     ±7.25%        1.49 ms        1.83 ms
+
+    Comparison:
+    Day 6 1 LIST        727.09
+    Day 6 1 MAP         663.04 - 1.10x slower +0.133 ms
+
+    Memory usage statistics:
+
+    Name                 average  deviation         median         99th %
+    Day 6 1 LIST         2.83 MB     ±0.00%        2.83 MB        2.83 MB
+    Day 6 1 MAP          2.78 MB     ±0.00%        2.78 MB        2.78 MB
+
+    Comparison:
+    Day 6 1 LIST         2.83 MB
+    Day 6 1 MAP          2.78 MB - 0.98x memory usage -0.05599 MB
+
+    Reduction count statistics:
+
+    Name         Reduction count
+    Day 6 1 LIST         74.29 K
+    Day 6 1 MAP          65.84 K - 0.89x reduction count -8.44900 K
+
+    **All measurements for reduction count were the same**
   """
   def day_6_1() do
-    grid = """
-    ....#.....
-    .........#
-    ..........
-    ..#.......
-    .......#..
-    ....012345
-    .#..^.....
-    ........#.
-    #.........
-    ......#...
-    """
-
-    # grid = File.read!("./day_6_input.txt")
+    grid = File.read!("./day_6_input.txt")
     max_width = map_width(grid, 0)
     {x, y} = find_start(grid, {0, 0})
-    move(grid, :up, {x, y}, max_width, [])
+    walk(grid, :up, {x, y}, max_width, [{x, y}])
   end
-
-  require Logger
 
   def map_width(<<@new_line, _::binary>>, count), do: count + 1
   def map_width(<<_::binary-size(1), rest::binary>>, count), do: map_width(rest, count + 1)
 
   @block "#"
-  def move(grid, direction, coords, max_width, visited) do
+  defp walk(grid, direction, coords, max_width, visited) do
+    new_coords = coord_for_direction(direction, coords)
+
+    case move(grid, new_coords, max_width) do
+      :exited_map -> length(Enum.uniq(visited))
+      :block -> walk(grid, turn_right(direction), coords, max_width, visited)
+      :cont -> walk(grid, direction, new_coords, max_width, [new_coords | visited])
+    end
+  end
+
+  # This approach is a little faster if you use map_size rather than length(Map.keys)
+  def day_6_1_map() do
+    grid = File.read!("./day_6_input.txt")
+    max_width = map_width(grid, 0)
+    {x, y} = find_start(grid, {0, 0})
+    walk_map(grid, :up, {x, y}, max_width, %{{x, y} => 1})
+  end
+
+  defp walk_map(grid, direction, coords, max_width, visited) do
     new_coords = coord_for_direction(direction, coords)
 
     case move(grid, new_coords, max_width) do
       :exited_map ->
-        length(Enum.uniq(visited))
+        map_size(visited)
 
-      <<@block, _::binary>> ->
-        Logger.warning("Block seen at #{inspect(new_coords)}")
-        move(grid, turn_right(direction), coords, max_width, visited)
+      :block ->
+        walk_map(grid, turn_right(direction), coords, max_width, visited)
 
-      # <<@new_line, _::binary>> -> raise "exited"
-      _ ->
-        move(grid, direction, new_coords, max_width, [new_coords | visited])
+      :cont ->
+        walk_map(grid, direction, new_coords, max_width, Map.put_new(visited, new_coords, 1))
     end
   end
 
@@ -870,12 +916,16 @@ defmodule Aoc24 do
   defp coord_for_direction(:right, {x, y}), do: {x + 1, y}
 
   defp move(grid, {x, y}, max) do
-    # The grid is square, but for the newlines so y is max - 1
+    # The grid is square so these are the same (the input file gets saved with a new line at the end)
     if x < 0 || y < 0 || x > max - 2 || y > max - 2 do
       :exited_map
     else
       <<_::binary-size(x + max * y), rest::binary>> = grid
-      rest
+
+      case rest do
+        <<@block, _::binary>> -> :block
+        _ -> :cont
+      end
     end
   end
 
