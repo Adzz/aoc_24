@@ -2,6 +2,7 @@ defmodule Aoc24 do
   @moduledoc """
   Documentation for `Aoc24`.
   """
+  require Logger
 
   @doc """
   Total the difference between the two numbers in the sorted lists.
@@ -878,7 +879,7 @@ defmodule Aoc24 do
 
   @block "#"
   defp walk(grid, direction, coords, max_width, visited) do
-    new_coords = coord_for_direction(direction, coords)
+    new_coords = next_cell(direction, coords)
 
     case move(grid, new_coords, max_width) do
       :exited_map -> length(Enum.uniq(visited))
@@ -896,7 +897,7 @@ defmodule Aoc24 do
   end
 
   defp walk_map(grid, direction, coords, max_width, visited) do
-    new_coords = coord_for_direction(direction, coords)
+    new_coords = next_cell(direction, coords)
 
     case move(grid, new_coords, max_width) do
       :exited_map ->
@@ -910,16 +911,17 @@ defmodule Aoc24 do
     end
   end
 
-  defp coord_for_direction(:up, {x, y}), do: {x, y - 1}
-  defp coord_for_direction(:down, {x, y}), do: {x, y + 1}
-  defp coord_for_direction(:left, {x, y}), do: {x - 1, y}
-  defp coord_for_direction(:right, {x, y}), do: {x + 1, y}
+  defp next_cell(:up, {x, y}), do: {x, y - 1}
+  defp next_cell(:down, {x, y}), do: {x, y + 1}
+  defp next_cell(:left, {x, y}), do: {x - 1, y}
+  defp next_cell(:right, {x, y}), do: {x + 1, y}
 
   defp move(grid, {x, y}, max) do
     # The grid is square so these are the same (the input file gets saved with a new line at the end)
     if x < 0 || y < 0 || x > max - 2 || y > max - 2 do
       :exited_map
     else
+      # Does this land us on the cell and then we peek at the thing after it? I think so
       <<_::binary-size(x + max * y), rest::binary>> = grid
 
       case rest do
@@ -938,4 +940,289 @@ defmodule Aoc24 do
   def find_start(<<@caret, _::binary>>, {x, y}), do: {x, y}
   def find_start(<<@new_line, rest::binary>>, {_, y}), do: find_start(rest, {0, y + 1})
   def find_start(<<_::binary-size(1), rest::binary>>, {x, y}), do: find_start(rest, {x + 1, y})
+
+  @doc """
+  This one involves finding all of the places where you could put ONE obstacle in order to
+  cause the guard to redirect such that they get stuck in a cycle. Sounds tricky, but the
+  first thing to notice is that in order to redirect the guard at all we have to place the
+  obstacle on a cell that the guard actually visits. So this limits the search space.
+
+  The brute force approach is:
+    - For each cell that the guard visits
+      + Place an object
+      + Run the sim and see if you ever repeat.
+
+  Now how to detect a repeat is also a little tricky I expect. What "loop" mean? It means
+  you have to eventually see a cell repeat then all cells after it repeat until you see
+  that cell again. Not simple because you need to know the chain and you could start at
+  any point. I'm wondering if this is the time for bitwise because the binary wants to
+  match exactly.
+
+  What we could do is have the visited nodes be a bitfield in the order in which we saw
+  them. The issue is grid is too big to use one bit, so we need to know the max X. 131 for
+  our input. That means 3 bits for each coord to keep it regular, eg <<001000>>. But not
+  sure if it's better to like byte align for cache and stuff? IDK.
+
+  Regardless we have some scheme to map the coords into a binary, we make "visited" be that
+  binary and we bitshift sections to see if it matches.
+
+  I guess the Q is like when do we compare the tail to itself? when does visited fold onto
+  itself in a way that proves it? I think maybe you have to like fold it in half as soon as
+  you can( maybe wait to be more efficient analagous to binary srch?) then shift it round
+  by one and see if it matches. if at any point the lineup is such that
+
+  what would a cycle be in bitshift? Well it would be
+
+  If you see a cell you have already seen, you should check each cell that comes after it
+  and keep progressing if we match until we see that repeated cell back again. So we need
+  to know:
+    The order in which we saw each cell.
+    When we see a cell we have seen already so we can then iterate its neighbors
+
+  it would be this:
+
+    see repeat cell. Start cycle detect. Detect says "target node" = A
+    iterate to the next place. Check that matches with the next
+
+    Basically we have to be able to cheaply: Find if we've seen a node AND find all descendants
+    in order thereafter. But somehow stop at us or something idk.
+
+  Detecting a cycle only requires that you see two cells in a row that you already saw. This
+  guarantees that you are going in the same direction as you did before, and therefore that
+  you will loop because you'll turn the same way and everything.
+
+  That implies we can do a map from prev to new coord. And cycle detection becomes getting the
+  key and then checking the value.
+
+  So easy cycle detection. Now we need the sim loop, which is...
+
+
+  There is also another way to think about this, which is that to get a cycle the indexes
+  have to follow a specific rule. It's something like (going from top of the rectangle formed):
+    there must be a block, then another block on the path travelled ONE row below AND to the
+    right. Then after that block there must be a block ONE column to the left and any number
+    of rows below. After that there must be a block any number of cells left but one row up.
+
+    So it's something like:
+
+      first_hit_block              = {x, y}
+      right hand side of rectangle = {a when a > x, b when b = y + 1}
+      Bottom of rectangle          = {c when c = a - 1, d when b > y}
+      Left of rectangle            = {e when e = x - 1, f when f = d - 1 }
+
+  If at any point you can't find a hit block that makes this true, then you insert one and
+  try to continue and if you ever see that you can't find the next block satisfying this
+  then you stop as you already inserted one so can't insert another.
+
+  We only need to look at hit blocks, we can always start from the top of the rectangle.
+  There may be multiple valid places to put the a block though per rectangle?
+
+  I think the possibilities also reduce as you draw the rectangle. The last corner can only
+  go in one place that makes a rectangle. Actually that's not true. Well eventually it has
+  to become true but you could draw multiple rectangles before getting to this point. So
+  for the last one there has to be a block up and to the right of it. It doesn't have to
+  be the original block, but if it isn't there needs to be a block down and right to it
+  and so on until eventually we can link back to the first block. So the rules like repeat
+  and at each point you have to try all spaces > than the corners x or y axis. We keep going
+  and only stop the loop when the block up and to the right of the bottom left corner IS
+  our first block. That would capture all multi-rectangle patterns.
+
+  So it's start at the top, work down. For each visited block between end columns, try all
+  blocks down one row and to the right of it. for each of them find all blocks left one and
+  down of it. For all of them try all spaces up one and to the left of it. And for each of
+  them try all blocks right one and up of it. If Stop if the top right block is ever the first
+  block, that's a hit. Stop if we ever get a miss after having placed a block.
+
+  Could also not be "blocks" we look for but "spaces where we turned right"? If we did the
+  pattern would be "do we ever turn right on a space we already turned right on?" And we
+  can just try turning right on each cell in the path and running the sim. Probably simpler
+  to think about but makes it harder to know if we can stop early? Might not have to but
+  is that different from the other way? We can stop if we get to the last row / col without
+  turning right. I think in that world you only have to check each cell _after_ you turn
+  right the first time. And the next one that you check after all that is the next right hand
+  turn. This is the way.
+
+  1. Find all RH turns in the visited path.
+  2. For each of these, try a RH turn on each cell after it, up until you see a RH turn already OR the edge of the map
+  3. Play out the sim for each case, seeing if you ever return back to the original. Then,
+  4. Repeat for the next occurring RH turn.
+
+  I think this is the least number of moves we can take.
+
+  Can we stop early? I don't think so we stop as soon as we leave the map OR
+
+
+  You always need to place on a visited path. Can't have a rectangle start at the top on the
+  rightmost column, so can skip that. Similarly can't have it start at the top on the leftmost
+  column either, because the final block needs to  be left of that. Can't have the RH corner
+  be at the bottom row or top row for the same reasons. Same for LH side.
+
+  So in psuedo code:
+
+  Each row at a time, is there a VISITED block in between the first and last columns? For each:
+    Is there a VISITED block Y + 1 and to the right of it? If No, try a block at each space
+    Y + 1 and to the right in turn.
+    If yes, is there a VISITED block X - 1 and + Y of it? If No and we already placed then
+    stop. If no and we didn't try each block. If yes then look for the next block.
+
+  Would also be pretty easy to sketch out debug output of the map as we go, like mark RH
+  turns etc etc if we need.
+
+  NOT 1599
+  NOT 1545
+  NOT 72
+  NOT 1567
+  NOT 1566
+  NOT 1559
+  NOT 1560
+
+  1434 apparently. We can't get to that answer and I don't know why.
+  """
+  def day_6_2() do
+    a = """
+    0123#56789
+    1...x...x#
+    2.........
+    3.#.......
+    4.x...x#..
+    5...012345
+    6#x.....x.
+    7^.....x#.
+    #x....x...
+    9.....#x..
+    """
+    b = """
+    0123#56789
+    1...x...x#
+    2.........
+    3.#.......
+    4.x...x#..
+    5...012345
+    6#x.^...x.
+    7x.....x#.
+    #x....x...
+    9.....#...
+    """
+
+    # 44 cell path
+    # 44 - 11 is the right number of cells to check. 33. We can discount cells that already
+    # turn right on them and ones that exist at the edge if we are careful about the way
+    c = File.read!("./day_6_input.txt")
+    grid = c
+    max_width = map_width(grid, 0)
+    start = find_start(grid, {0, 0})
+
+    # Cells to check are all cells on the path MINUS the very first and any we already turn
+    # right on because you can't put a block on a block.
+    cells_to_check = cells_to_check(grid, :up, start, max_width, %{})
+
+    # cells_to_check
+    # |> Enum.reduce(0, fn
+    #   {_, false}, count ->
+    #     count
+    #   # We don't want to check the first block because stuff.
+    #   {{^start, :up}, _}, count -> count
+
+    #   {{coords, direction}, true}, count ->
+    #     case simulate_all(grid, direction, coords, max_width, [], {coords, direction}) do
+    #       :loop -> count + 1
+    #       :no_loop -> count
+    #     end
+    # end)
+    # {{76, 42}, :left}
+    simulate_all(grid, :left, {76, 42}, max_width, [], {{76, 42}, :left})
+  end
+
+  defp cells_to_check(grid, direction, coords, max_width, cells_to_check) do
+    next_cell = next_cell(direction, coords)
+
+    # Peek ahead.
+    case item_at_location(grid, next_cell, max_width, direction) do
+      :exited_map ->
+        cells_to_check
+
+      # Don't save right turns because we already turn right on them, so we just continue.
+      :block ->
+        exit_direction = exit_direction(grid, direction, coords, max_width)
+        new_coords = next_cell(exit_direction, coords)
+        cells_to_check(grid, exit_direction, new_coords, max_width, cells_to_check)
+
+      :cont ->
+        cells_to_check = Map.put_new(cells_to_check, {coords, direction},  true)
+        new_coords = next_cell(direction, coords)
+        cells_to_check(grid, direction, new_coords, max_width, cells_to_check)
+    end
+  end
+
+  defp exit_direction(grid, direction, coords, max_width) do
+    next_cell = next_cell_coords(direction, coords)
+    case item_at_location(grid, next_cell, max_width, direction) do
+      :block -> exit_direction(grid, turn_right(direction), coords, max_width)
+      :cont -> direction
+    end
+  end
+
+  defp simulate_all(grid, direction, coords, max_width, visited, origin) do
+    {origin_coord, origin_direction} = origin
+
+    {next_cell, direction} =
+      if coords == origin_coord && direction == origin_direction do
+        direction = turn_right(direction)
+        {next_cell_coords(direction, coords), direction}
+      else
+        {next_cell_coords(direction, coords), direction}
+      end
+
+    # We may enter a cell facing a new direction, in which case it's not a loop. So we have
+    # to include the direction in the key.
+    # if Map.get(visited, {coords, direction}) do
+    if Enum.find(visited, fn x -> x == {coords, direction} end) do
+      visited |> IO.inspect(limit: :infinity, charlists: :as_lists, label: "")
+      :loop
+      raise "loop"
+    else
+      case item_at_location(grid, next_cell, max_width, direction) do
+        :exited_map ->
+          :no_loop
+
+        :block ->
+          exit_direction = exit_direction(grid, direction, coords, max_width)
+          new_coords = next_cell(exit_direction, coords)
+          # visited = Map.put(visited, {coords, exit_direction}, true)
+          visited = [{coords, exit_direction} | visited]
+          simulate_all(grid, exit_direction, new_coords, max_width, visited, origin)
+
+        :cont ->
+          # visited = Map.put(visited, {coords, direction}, true)
+          visited = [{coords, direction} | visited]
+          simulate_all(grid, direction, next_cell, max_width, visited, origin)
+      end
+    end
+  end
+
+  defp next_cell_coords(:up, {x, y}), do: {x, y - 1}
+  defp next_cell_coords(:down, {x, y}), do: {x, y + 1}
+  defp next_cell_coords(:left, {x, y}), do: {x - 1, y}
+  defp next_cell_coords(:right, {x, y}), do: {x + 1, y}
+
+  defp within_bounds?({_, y}, _max, :up), do: y >= 0
+  defp within_bounds?({_, y}, max, :down), do: y <= max - 2
+  defp within_bounds?({x, _}, _max, :left), do: x >= 0
+  defp within_bounds?({x, _}, max, :right), do: x <= max - 2
+
+  defp item_at_location(grid, {x, y}, max, direction) do
+    # It's only if it's also not a block because a block on that square would
+    # be valid and should move us...
+    if within_bounds?({x, y}, max, direction) do
+      # The head of rest is the actual cell the coords refer to.
+      <<_::binary-size(x + max * y), location::binary-size(1), _rest::binary>> = grid
+
+      case location do
+        @block -> :block
+        _ -> :cont
+      end
+    else
+      :exited_map
+    end
+  end
 end
